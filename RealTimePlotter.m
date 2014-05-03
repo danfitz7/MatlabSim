@@ -22,7 +22,7 @@ function varargout = RealTimePlotter(varargin)
 
     % Edit the above text to modify the response to help RealTimePlotter
 
-    % Last Modified by GUIDE v2.5 02-May-2014 22:33:35
+    % Last Modified by GUIDE v2.5 03-May-2014 13:53:52
 
     % Begin initialization code - DO NOT EDIT
     gui_Singleton = 1;
@@ -64,7 +64,7 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
 
     % START USER CODE
 
-    %initial time stuff
+    %initial time variables
     global time;
     time=0;
     set(handles.periodsldr,'Value',0.01);
@@ -80,7 +80,7 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
     set(handles.periodsldr,'Value',get(handles.timer,'Period'))
     set(handles.slidervalue,'String',num2str(get(handles.periodsldr,'Value')))
 
-    %%%%%%%%%%%%%%%%%%%%% bounding box %%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%% CONTAINER %%%%%%%%%%%%%%%%%%%%%
     handles.containerSize=100.0;
     box=unique([0 0 0; perms([1 1 0]); perms([1 0 0]); 1 1 1], 'rows');
     box=box.*handles.containerSize;
@@ -112,14 +112,16 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
     surf(holex,holey,holez);
     hold on
 
-    %%%%%%%%%%%%%%%%%%%%% particles %%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%% PARTICLES %%%%%%%%%%%%%%%%%%%%%
     handles.nParticles=1000;
     handles.temperature=1;
-    handles.particles = handles.containerSize*rand(handles.nParticles,3);
     handles.particleRadius=1.5;
-    handles.particleVelocities=getBoltzmannTemperatures(handles); %2*handles.temperature*rand(handles.nParticles,3)-handles.temperature;
-
-
+    handles.collisionDistance=(2*handles.particleRadius)^2; %square of the sum of the radii of two particles (distance between them when they are colliding)
+    handles.particleMass=1.0;
+    handles.particles = handles.particleRadius+(handles.containerSize-2*handles.particleRadius)*rand(handles.nParticles,3);
+    handles.particleVelocities=2*handles.temperature*rand(handles.nParticles,3)-handles.temperature;
+    handles.combinations=nchoosek([1:1:handles.nParticles],2);  %1000 choose 2 oh boy!  
+    
     %render as spheres
     % [SphereX,SphereY,SphereZ]=sphere(10); %make a basic n x n sphere
     % SphereX=handles.particleRadius*SphereX;
@@ -130,13 +132,17 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
     %handles.particleSpheresPlotHandle = surf(SphereX+handles.particles(:,1), SphereY+handle.particles(:,2), SphereZ+handles.particles(:,3));
     handles.scatterPlotHandle = scatter3(handles.simDisplay,handles.particles(:,1),handles.particles(:,2),handles.particles(:,3), 'fill');     %plot particles as 3D scatter in the main 3D axis
     %set(handles.scatterPlotHandle,'XDataSource',handles.particles(1,:),'YDataSource',handles.particles(2,:),'ZDataSource',handles.particles(3,:)); %doesn't seem to work
-
+    
+    %SIMULATION CONTROL VARIABLES
+    handles.effusionEnabled=0;   %allows particles to escape through the hole when on
+    handles.collisionEnabled=0;  %enables collisions between particles
+    
     %%%%%%%%%%%%%%%%%%%%% initial plotting/viewport settings %%%%%%%%%%%%%%%%%%%%%
 
     %set axis limits
-    set(handles.simDisplay,'XLim',[0,100])
-    set(handles.simDisplay,'YLim',[0,100]);
-    set(handles.simDisplay,'ZLim',[0,100]);
+    set(handles.simDisplay,'XLim',[-50,150])
+    set(handles.simDisplay,'YLim',[-50,150]);
+    set(handles.simDisplay,'ZLim',[-50,150]);
 
     %set axis color
     set(handles.simDisplay,'XColor',[1,0,0]);
@@ -160,25 +166,24 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
     set(handles.simDisplay,'Projection','perspective');
     set(handles.simDisplay,'CameraViewAngle',30);
 
+    %PRESSURE PLOT
     %set Axis for Pressure plot
     subplot(handles.tempPlotAxis);                %plot on the correct axis
     set(gcf, 'CurrentAxes', handles.tempPlotAxis);%set the axis (does this even do anything?)
-
-    %plot pressure
     handles.pressures=[];
     handles.times=[];
     handles.pressurePlotHandle=plot([0],[0]);%handles.tempPlotAxis,handles.times,handles.pressures);
 
+    %N PARTICLES PLOT
+    subplot(handles.nParticlesPlotAxis);                %plot on the correct axis
+    set(gcf, 'CurrentAxes', handles.nParticlesPlotAxis);%set the axis (does this even do anything?)
+    handles.nParticlesData=[];
+    handles.nParticlePlotHandle=plot([0],[0]);
+    handles.nParticlesPlotAxis.YLim.x=0;
+    handles.nParticlesPlotAxis.YLim.y=handles.nParticles+1;
+    
     % Update handles structure
     guidata(hObject,handles);
-end 
-
-%Maxwell-Boltzmann distribution for velocities in each dimension for a given tempererature
-function getBoltzmannTemperatures(handles)
-    %f(v_i)=sqrt(m/(2*pi*k*T)) exp(-mv^2/(2kT)) 
-    %for m=k=T=1
-    %f(v_i)=sqrt(T)exp(-v^2/(T2))
-    return %2*handles.temperature*rand(handles.nParticles,3)-handles.temperature;
 end
 
 % --- Outputs from this function are returned to the command line.
@@ -190,6 +195,71 @@ function varargout = RealTimePlotter_OutputFcn(hObject, eventdata, handles)
 
     % Get default command line output from handles structure
     varargout{1} = handles.output;
+end
+
+%UPDATE LOOP
+%timer update
+function update_display(hObject,eventdata,hfigure)
+    % Timer timer1 callback, called each time timer iterates.
+    
+    handles = guidata(hfigure);
+    axes=[1,2,3];
+    
+    %UPDATE TIMES
+    global time;
+    time=time+1;
+    handles.times=[handles.times,time];
+        
+    %%UPDATE PARTICEL COLLISIONS
+    %add particle velocities to the positions each time step
+    handles.particles=handles.particles + handles.particleVelocities;
+    set(handles.scatterPlotHandle,'XData',handles.particles(:,1),'YData',handles.particles(:,2),'ZData',handles.particles(:,3));
+    %set(handles.particleSpheresPlotHandle, 'XData',handles.sphere(:,1)+handles.particles(:,1), 'YData',handles.sphere(:,2)+handles.particles(:,2), 'ZData',handles.sphere(:,2)+handles.particles(:,2));
+
+    %%ESCAPE BY EFFUSION THROUGH HOLE
+    if (handles.effusionEnabled==1)
+        effusingParticlesIndeces=find((handles.particles(:,1)-handles.particleRadius<0) & (((handles.particles(:,2)-handles.holePosition(1)).^2+(handles.particles(:,3)-handles.holePosition(2)).^2)<handles.holeRadiusSquared));
+        handles.particles=removerows(handles.particles,effusingParticlesIndeces);
+        handles.particleVelocities=removerows(handles.particleVelocities,effusingParticlesIndeces);
+        handles.nParticles=size(handles.particles,1);
+    end
+    
+    %Update nParticles graph
+    handles.nParticlesData=[handles.nParticlesData,handles.nParticles];
+    set(handles.nParticlePlotHandle,'XData',handles.times,'Ydata',handles.nParticlesData);
+    
+    %%COLLISION WITH CONTAINER
+    %colliding=@(a,i)  (handles.particles(a,i)>containerSize);
+    wallPressure=0;
+    for axis=axes
+        collidingParticleIndeces=ind2sub(size(handles.particles(:,axis)),find((handles.particles(:,axis)+handles.particleRadius>handles.containerSize) | (handles.particles(:,axis)-handles.particleRadius<0)));
+        %wallPressure=wallPressure+sum(abs(handles.particleVelocities(collidingParticleIndeces,axis)));
+        handles.particleVelocities(collidingParticleIndeces,axis) = -1.*handles.particleVelocities(collidingParticleIndeces,axis);   %+X
+        handles.combinations=nchoosek([1:1:handles.nParticles],2);  %1000 choose 2 oh boy!  
+    end
+
+    %INTERPARTICLE COLLISIONS
+    particleCombinationSquareDistances=sum(handles.particles((handles.combinations(:,1))-handles.particles(handles.combinations(:,2))).^2,2); %for each combination of particles, find the sum of the squares of the differences of the elements of their position vectors (the distance between them squared)
+    collidingPairs=find(particleCombinationSquareDistances<=handles.collisionDistance);
+    collidingPairIndeces=handles.combinations(ind2sub(size(handles.combinations), collidingPairs),:);   %a list of pairs of indeces for the particles and particleVelcotity arrays of collising particles
+    
+    collidingIndeces=unique(collidingPairIndeces(:));
+    handles.particles=removerows(handles.particles,collidingIndeces);
+    handles.particleVelocities=removerows(handles.particleVelocities,collidingIndeces);
+    handles.nParticles=size(handles.particles,1);
+    
+    %UPDATE PRESSURES
+    handles.pressureConstant = handles.particleMass/handles.containerSize; %F_AVG = (m N v_avg)/L
+    curPressure=handles.pressureConstant*sumsqr(handles.particleVelocities);  %mean(handles.particleVelocities(:,1).^2+handles.particleVelocities(:,2).^2+handles.particleVelocities(:,3).^2)
+    handles.pressures=[handles.pressures,curPressure];%[handles.pressures,wallPressure];
+    set(handles.pressurePlotHandle,'XData',handles.times,'Ydata',handles.pressures);
+
+    % Update handles structure
+    guidata(hfigure,handles);
+
+    %refreshdata(handles.simDisplay);   %unneccisary?
+    drawnow;
+    % END USER CODE
 end
 
 % --- Executes on button press in startbtn.
@@ -206,7 +276,6 @@ function startbtn_Callback(hObject, eventdata, handles)
     end
 end
 
-
 % --- Executes on button press in stopbtn.
 function stopbtn_Callback(hObject, eventdata, handles)
     % hObject    handle to stopbtn (see GCBO)
@@ -219,10 +288,10 @@ function stopbtn_Callback(hObject, eventdata, handles)
         stop(handles.timer);
         disp('Paused.');
     end
-    % END USER CODE
+end
 
-    % --- Executes on slider movement.
-    function periodsldr_Callback(hObject, eventdata, handles)
+% --- Executes on slider movement.
+function periodsldr_Callback(hObject, eventdata, handles)
     % hObject    handle to periodsldr (see GCBO)
     % eventdata  reserved - to be defined in a future version of MATLAB
     % handles    structure with handles and user data (see GUIDATA)
@@ -254,6 +323,28 @@ function stopbtn_Callback(hObject, eventdata, handles)
     % END USER CODE
 end
 
+% --- Executes on button press in EffusionChechBox.
+function EffusionChechBox_Callback(hObject, eventdata, handles)
+    % hObject    handle to EffusionChechBox (see GCBO)
+    % eventdata  reserved - to be defined in a future version of MATLAB
+    % handles    structure with handles and user data (see GUIDATA)
+
+    % Hint: get(hObject,'Value') returns toggle state of EffusionChechBox
+    handles.effusionEnabled = get(hObject,'Value');
+    guidata(hObject,handles);
+end
+
+% --- Executes on button press in ParticleCollisionCheckbox.
+function ParticleCollisionCheckbox_Callback(hObject, eventdata, handles)
+    % hObject    handle to ParticleCollisionCheckbox (see GCBO)
+    % eventdata  reserved - to be defined in a future version of MATLAB
+    % handles    structure with handles and user data (see GUIDATA)
+
+    % Hint: get(hObject,'Value') returns toggle state of ParticleCollisionCheckbox
+    handles.collisionEnabled = get(hObject,'Value');
+    guidata(hObject,handles);
+end
+
 % --- Executes during object creation, after setting all properties.
 function periodsldr_CreateFcn(hObject, eventdata, handles)
     % hObject    handle to periodsldr (see GCBO)
@@ -266,54 +357,13 @@ function periodsldr_CreateFcn(hObject, eventdata, handles)
     end
 end
 
-%timer update - MAIN LOOP
-function update_display(hObject,eventdata,hfigure)
-    % Timer timer1 callback, called each time timer iterates.
-    % Gets surface Z data, adds noise, and writes it back to surface object.
+% --- Executes during object creation, after setting all properties.
+function simDisplay_CreateFcn(hObject, eventdata, handles)
+    % hObject    handle to simDisplay (see GCBO)
+    % eventdata  reserved - to be defined in a future version of MATLAB
+    % handles    empty - handles not created until after all CreateFcns called
 
-    %disp('UPDATING...');
-    %disp(time);
-
-    handles = guidata(hfigure);
-
-    %%add particle velocities to the positions each time step
-    handles.particles=handles.particles + handles.particleVelocities;
-    set(handles.scatterPlotHandle,'XData',handles.particles(:,1),'YData',handles.particles(:,2),'ZData',handles.particles(:,3));
-    %set(handles.particleSpheresPlotHandle, 'XData',handles.sphere(:,1)+handles.particles(:,1), 'YData',handles.sphere(:,2)+handles.particles(:,2), 'ZData',handles.sphere(:,2)+handles.particles(:,2));
-
-    %%ESCAPE BY EFFUSION THROUGH HOLE
-    axes=[1,2,3];
-    effusingParticlesIndeces=find((handles.particles(:,1)<0) & (((handles.particles(:,2)-handles.holePosition(1)).^2+(handles.particles(:,3)-handles.holePosition(2)).^2)<handles.holeRadiusSquared));
-    handles.particles=removerows(handles.particles,effusingParticlesIndeces);
-    handles.particleVelocities=removerows(handles.particleVelocities,effusingParticlesIndeces);
-
-    %%COLLISION WITH CONTAINER
-    %colliding=@(a,i)  (handles.particles(a,i)>containerSize);
-    wallPressure=0;
-    for axis=axes
-        collidingParticleIndeces=ind2sub(size(handles.particles(:,axis)),find((handles.particles(:,axis)>handles.containerSize) | (handles.particles(:,axis)<0)));
-        wallPressure=wallPressure+sum(abs(handles.particleVelocities(collidingParticleIndeces,axis)));
-        handles.particleVelocities(collidingParticleIndeces,axis) = -1.*handles.particleVelocities(collidingParticleIndeces,axis);   %+X
-    end
-    %set(handles.particles, handles.particles+handles.particleVelocities);
-    %set(handles.scatterPlotHandle, {'XData','YData','ZData'}, handles.particles);
-    %drawContainer(hfigure);
-    %disp(handles.particles);
-    %view(50,50,50);
-
-    %PLOT Pressure
-    global time;
-    time=time+1;
-    handles.times=[handles.times,time];
-    handles.pressures=[handles.pressures,wallPressure];
-    set(handles.pressurePlotHandle,'XData',handles.times,'Ydata',handles.pressures);
-
-    % Update handles structure
-    guidata(hfigure,handles);
-
-    %refreshdata(handles.simDisplay);   %unneccisary?
-    drawnow;
-    % END USER CODE
+    % Hint: place code in OpeningFcn to populate simDisplay
 end
 
 % --- Executes when user attempts to close figure1.
@@ -335,24 +385,4 @@ function figure1_CloseRequestFcn(hObject, eventdata, handles)
 
     % Hint: delete(hObject) closes the figure
     delete(hObject);
-    end 
-end
-
-% --- Executes during object creation, after setting all properties.
-function simDisplay_CreateFcn(hObject, eventdata, handles)
-    % eventdata  reserved - to be defined in a future version of MATLAB
-    % handles    empty - handles not created until after all CreateFcns called
-
-    % Hint: place code in OpeningFcn to populate simDisplay
-    handles.effusionOn=0;
-end
-    
-% --- Executes on button press in EffusionChechBox.
-function EffusionChechBox_Callback(hObject, eventdata, handles)
-    % hObject    handle to EffusionChechBox (see GCBO)
-    % eventdata  reserved - to be defined in a future version of MATLAB
-    % handles    structure with handles and user data (see GUIDATA)
-
-    % Hint: get(hObject,'Value') returns toggle state of EffusionChechBox
-    handles.effusionOn = get(hObject,'Value');
 end
