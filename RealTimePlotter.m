@@ -198,19 +198,25 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
 %     %                                 bsxfun(@plus,bsxfun(@times,r,repmat(Cz,[1 N])),p(:,3)'),...
 %     %                                 T','edgecolor','none');
 
-%     %render as spheres in loop
+    %render as spheres in loop
+    %subplot(handles.simDisplay);            %plot on the correct axis
+    %set(gcf, 'CurrentAxes', handles.simDisplay);%set the axis (does this even do anything?)
+%     axis(handles.simDisplay);
 %     [handles.SphereX,handles.SphereY,handles.SphereZ] = sphere(16);
-%     H=surf(handles.SphereX,handles.SphereY,handles.SphereZ);
+%     handles.SphereX=handles.SphereX*handles.particleRadius;
+%     handles.SphereY=handles.SphereY*handles.particleRadius;
+%     handles.SphereZ=handles.SphereZ*handles.particleRadius;
+%     handles.sphereSurfHandle=surf(handles.simDisplay,handles.SphereX,handles.SphereY,handles.SphereZ);
+%     handles.sphereSurfHandles=gobjects(1,handles.nParticles);
 %     for i=1:handles.nParticles
-%         %surf(handles.SphereX+handles.particles(i,1),handles.SphereY+handles.particles(i,2),handles.SphereZ+handles.particles(i,3));
-%         set(H,'XData',handles.SphereX+handles.particles(i,1),'YData',handles.particles(i,2),'ZData',handles.particles(i,3));
-%         drawnow;
+%         handles.sphereSurfHandles(i)=surf(handles.simDisplay,handles.SphereX+handles.particles(i,1),handles.SphereY+handles.particles(i,2),handles.SphereZ+handles.particles(i,3));
+%         %set(handles.sphereSurfHandles(i),'XData',handles.SphereX+handles.particles(i,1),'YData',handles.SphereY+handles.particles(i,2),'ZData',handles.SphereZ+handles.particles(i,3));
+%         %drawnow;
 %     end
     
     %%render as scatter plot
     handles.scatterPlotHandle = scatter3(handles.simDisplay,handles.particles(:,1),handles.particles(:,2),handles.particles(:,3), 'fill');     %plot particles as 3D scatter in the main 3D axis
-    
-    
+
     %PRESSURE PLOT
     %set Axis for Pressure plot
     subplot(handles.PressurePlotAxis);            %plot on the correct axis
@@ -250,7 +256,8 @@ function update_display(hObject,eventdata,hfigure)
     global time;
     time=time+1;
     handles.times=[handles.times,time];
-        
+    %disp(time);
+    
     %%UPDATE PARTICLE POSITIONS
     %add particle velocities to the positions each time step
     handles.particles=handles.particles + handles.particleVelocities;
@@ -259,9 +266,11 @@ function update_display(hObject,eventdata,hfigure)
     if (handles.effusionEnabled==1)
         effusingParticlesIndeces=find((handles.particles(:,1)-handles.particleRadius<0) & (((handles.particles(:,2)-handles.holePosition(1)).^2+(handles.particles(:,3)-handles.holePosition(2)).^2)<handles.holeRadiusSquared));
         if (size(effusingParticlesIndeces)>0)
-            handles.particles=removerows(handles.particles,effusingParticlesIndeces);
-            handles.particleVelocities=removerows(handles.particleVelocities,effusingParticlesIndeces);
-            handles.nParticles=size(handles.particles,1);
+            handles.particles(effusingParticlesIndeces)=[];
+            handles.particles(effusingParticlesIndeces)=[];
+            %handles.particles=removerows(handles.particles,effusingParticlesIndeces);
+            %handles.particleVelocities=removerows(handles.particleVelocities,effusingParticlesIndeces);
+            handles.nParticles=size(handles.particles,2);
             handles.combinations=nchoosek([1:1:handles.nParticles],2);
             
             %handles.particles(effusingParticlesIndeces)=[];
@@ -378,11 +387,17 @@ function update_display(hObject,eventdata,hfigure)
     %axis(handles.simDisplay);
     %cla(handles.simDisplay);
 %     set(gcf, 'CurrentAxes', handles.simDisplay);%set the axis (does this even do anything?)
+%     hold on;
 %     for i=1:handles.nParticles
-%         %surf(handles.SphereX+handles.particles(i,1),handles.SphereY+handles.particles(i,2),handles.SphereZ+handles.particles(i,3));
-%         set(H,'XData',handles.SphereX+handles.particles(i,1),'YData',handles.particles(i,2),'ZData',handles.particles(i,3));
-%         drawnow;
+%         %surf(handles.simDisplay,handles.SphereX+handles.particles(i,1),handles.SphereY+handles.particles(i,2),handles.SphereZ+handles.particles(i,3));
+%         set(handles.sphereSurfHandles(i),'XData',handles.SphereX+handles.particles(i,1),'YData',handles.SphereY+handles.particles(i,2),'ZData',handles.SphereZ+handles.particles(i,3));
 %     end
+%    particleIndeces=[1:1:handles.nParticles];
+%    handles.sphereSurfHandles.XData=handles.SphereX+handles.particles(particleIndeces,1);
+%    handles.sphereSurfHandles.YData=handles.SphereY+handles.particles(particleIndeces,2);
+%    handles.sphereSurfHandles.ZData=handles.SphereZ+handles.particles(particleIndeces,3);
+   %set(handles.sphereSurfHandles(particleIndeces),'XData',handles.SphereX+handles.particles(particleIndeces,1),'YData',handles.SphereY+handles.particles(particleIndeces,2),'ZData',handles.SphereZ+handles.particles(particleIndeces,3));
+
     %set(gca,'Clim',[0 1]);
     %alpha 0.9;
     %handles.containerGraphic.HandleVisibility=1;
@@ -392,9 +407,13 @@ function update_display(hObject,eventdata,hfigure)
     set(handles.nParticlePlotHandle,'XData',handles.times,'Ydata',handles.nParticlesData);
     
     %UPDATE PRESSURES
-    handles.pressureConstant = handles.particleMass/handles.containerSize; %F_AVG = (m N v_avg)/L
-    curPressure=handles.pressureConstant*sumsqr(handles.particleVelocities);  %mean(handles.particleVelocities(:,1).^2+handles.particleVelocities(:,2).^2+handles.particleVelocities(:,3).^2)
-    handles.pressures=[handles.pressures,curPressure];%[handles.pressures,wallPressure];
+    %F_avg = (m N v^2_avg)/L
+    %P=F_avg/A = (N m v^2_avg)/(3V)
+    % =(m v^2_sum)/(3V) = (m/(3V))*v^2_avg
+    % =((2N)/(3V))K_avg where K_avg =avg(.5mv^2) (in terms of kinetic energy)
+    %handles.pressureConstant = handles.particleMass/(3*handles.containerSize^2); %F_AVG = (m N v_avg)/L
+    curPressure=sum(sum(handles.particleVelocities.^2)); %mean(handles.particleVelocities(:,1).^2+handles.particleVelocities(:,2).^2+handles.particleVelocities(:,3).^2)
+    handles.pressures=[handles.pressures,curPressure];   %[handles.pressures,wallPressure];
     set(handles.PressurePlotHandle,'XData',handles.times,'Ydata',handles.pressures);
 
     %UPDATE VELOCITIES HISTOGRAM
@@ -522,6 +541,20 @@ function figure1_CloseRequestFcn(hObject, eventdata, handles)
     % handles    structure with handles and user data (see GUIDATA)
 
     % START USER CODE
+    
+    %write the final particle velocities to a file for analysis
+    fileID=fopen('velocities.txt','w');
+    fprintf(fileID, '%1.5f\r\n', sqrt(sum(handles.particleVelocities.^2,2)));
+    fclose(fileID);
+    
+    fileID=fopen('nParticles.txt','w');
+    fprintf(fileID, '%1.0f %1u\r\n', [handles.times; handles.nParticlesData]);
+    fclose(fileID);
+    
+    fileID=fopen('pressures.txt','w');
+    fprintf(fileID, '%1.0f %1.7f\r\n', [handles.times; handles.pressures]);
+    fclose(fileID);
+    
     % Necessary to provide this function to prevent timer callback
     % from causing an error after GUI code stops executing.
     % Before exiting, if the timer is running, stop it.
