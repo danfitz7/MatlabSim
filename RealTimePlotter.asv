@@ -124,7 +124,7 @@ function RealTimePlotter_OpeningFcn(hObject, eventdata, handles, varargin)
     hold on
 
     %%%%%%%%%%%%%%%%%%%%% PARTICLES %%%%%%%%%%%%%%%%%%%%%
-    handles.nParticles=1000;
+    handles.nParticles=200;
     handles.temperature=1;
     handles.particleRadius=1.5;
     handles.collisionDistance=(2*handles.particleRadius)^2; %square of the sum of the radii of two particles (distance between them when they are colliding)
@@ -266,11 +266,11 @@ function update_display(hObject,eventdata,hfigure)
     if (handles.effusionEnabled==1)
         effusingParticlesIndeces=find((handles.particles(:,1)-handles.particleRadius<0) & (((handles.particles(:,2)-handles.holePosition(1)).^2+(handles.particles(:,3)-handles.holePosition(2)).^2)<handles.holeRadiusSquared));
         if (size(effusingParticlesIndeces)>0)
-            handles.particles(effusingParticlesIndeces,:)=[];
-            handles.particleVelocities(effusingParticlesIndeces,:)=[];
+            handles.particles(effusingParticlesIndeces)=[];
+            handles.particles(effusingParticlesIndeces)=[];
             %handles.particles=removerows(handles.particles,effusingParticlesIndeces);
             %handles.particleVelocities=removerows(handles.particleVelocities,effusingParticlesIndeces);
-            handles.nParticles=size(handles.particles,1);
+            handles.nParticles=size(handles.particles,2);
             handles.combinations=nchoosek([1:1:handles.nParticles],2);
             
             %handles.particles(effusingParticlesIndeces)=[];
